@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title></title>
+    {#        <script src="../lib/Firebug/firebug.js"></script>#}
+    <script src="{{ url_for('static', filename='js/OpenLayers.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/metadata.js') }}"></script>
+    <style>
+        .olControlAttribution {
+            bottom: 3px;
+        }
+    </style>
+    <script type="text/javascript">
+        var map;
+
+        function init() {
+            var projection = ol.proj.get("EPSG:4326");
+            var resolutions = [0.00118973050291514, 5.9486525145757E-4, 2.97432625728785E-4, 1.5228550437313792E-4, 7.614275218656896E-5, 3.807137609328448E-5, 1.903568804664224E-5, 9.51784402332112E-6, 4.75892201166056E-6];
+            var matrixIds = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+            var origin = [-400, 400];
+            var tileGrid = new ol.tilegrid.TileGrid({
+                origin: origin, //原点（左上角）
+                resolutions: resolutions, //分辨率数组
+                matrixIds: matrixIds //矩阵标识列表，与地图级数保持一致
+            })
+            map = new OpenLayers.Map({
+                div: "map",
+                projection: projection,
+                displayProjection: new OpenLayers.Projection("EPSG:4326") // 设置此显示投影参数后，显示坐标皆为4326
+            });
+            var tileGrid = new ol.tilegrid.TileGrid({
+                origin: origin, //原点（左上角）
+                resolutions: resolutions, //分辨率数组
+                matrixIds: matrixIds //矩阵标识列表，与地图级数保持一致
+            }),
+
+            var
+            wmts = new OpenLayers.Layer.WMTS({
+                name: "WMTS",
+                url: wmtsUrl,
+                layer: layer,
+                matrixSet: matrixSet,
+                matrixIds: matrixIds,
+                format: format,
+                style: "default",
+                opacity: 1,
+                isBaseLayer: true,
+                resolutions: resolutions,
+                tileOrigin: new OpenLayers.LonLat(originX, originY)
+            });
+            var vector = new OpenLayers.Layer.Vector('vector');
+            map.addLayers([wmts, vector]);
+            map.setCenter(new OpenLayers.LonLat(centerX, centerY), layerIds[0]);
+            map.addControl(new OpenLayers.Control.LayerSwitcher());
+
+            // 增加鹰眼控件
+            var overview = new OpenLayers.Control.OverviewMap({
+                maximized: true
+            });
+            map.addControl(overview);
+
+            // 增加鼠标实时坐标控件
+            var mp = new OpenLayers.Control.MousePosition();
+            map.addControl(mp);
+            // 设置控件位置为左下角
+            mp.div.style.bottom = "10px";
+            mp.div.style.left = "10px";
+
+            // 配置绘制的点线面样式
+            var sketchSymbolizers = {
+                "Point": {
+                    pointRadius: 4,
+                    graphicName: "square",
+                    fillColor: "white",
+                    fillOpacity: 1,
+                    strokeWidth: 1,
+                    strokeOpacity: 1,
+                    strokeColor: "#333333"
+                },
+                "Line": {
+                    strokeWidth: 3,
+                    strokeOpacity: 1,
+                    strokeColor: "#666666",
+                    strokeDashstyle: "dash"
+                },
+                "Polygon": {
+                    strokeWidth: 2,
+                    strokeOpacity: 1,
+                    strokeColor: "#666666",
+                    fillColor: "white",
+                    fillOpacity: 0.3
+                }
+            };
+            var style = new OpenLayers.Style();
+            style.addRules([
+                new OpenLayers.Rule({symbolizer: sketchSymbolizers})
+            ]);
+            var styleMap = new OpenLayers.StyleMap({"default": style});
+
+            // 允许通过cancvas进行点线面渲染
+            var renderer = OpenLayers.Util.getParameters(window.location.href).renderer;
+            renderer = (renderer) ? [renderer] : OpenLayers.Layer.Vector.prototype.renderers;
+
+            measureControls = {
+                line: new OpenLayers.Control.Measure(
+                    OpenLayers.Handler.Path, {
+                        persist: true,
+                        handlerOptions: {
+                            layerOptions: {
+                                renderers: renderer,
+                                styleMap: styleMap
+                            }
+                        }
+                    }
+                ),
+                polygon: new OpenLayers.Control.Measure(
+                    OpenLayers.Handler.Polygon, {
+                        persist: true,
+                        handlerOptions: {
+                            layerOptions: {
+                                renderers: renderer,
+                                styleMap: styleMap
+                            }
+                        }
+                    }
+                )
+            };
+
+            var control;
+            for (var key in measureControls) {
+                control = measureControls[key];
+                control.events.on({
+                    "measure": handleMeasurements,
+                    "measurepartial": handleMeasurements
+                });
+                map.addControl(control);
+            }
+
+            document.getElementById('noneToggle').checked = true;
+        }
+
+        // 测量相关方法
+        function handleMeasurements(event) {
+            var geometry = event.geometry;
+            var units = event.units;
+            var order = event.order;
+            var measure = event.measure;
+            var element = document.getElementById('output');
+            var out = "";
+            if (order == 1) {
+                out += "测量结果: " + measure.toFixed(3) + " " + units;
+            } else {
+                out += "测量结果: " + measure.toFixed(3) + " " + units + "<sup>2</" + "sup>";
+            }
+            element.innerHTML = out;
+        }
+
+        function toggleControl(element) {
+            for (key in measureControls) {
+                var control = measureControls[key];
+                if (element.value == key && element.checked) {
+                    control.activate();
+                } else {
+                    control.deactivate();
+                }
+            }
+        }
+
+        function toggleGeodesic(element) {
+            for (key in measureControls) {
+                var control = measureControls[key];
+                control.geodesic = element.checked;
+            }
+        }
+
+        function toggleImmediate(element) {
+            for (key in measureControls) {
+                var control = measureControls[key];
+                control.setImmediate(element.checked);
+            }
+        }
+
+        window.onload = function () {
+            init();
+        }
+    </script>
+</head>
+<body>
+<h1 id="title" style="font-size:20px;">View in OpenLayers</h1>
+<div id="map" style="width:800px;height:500px;"></div>
+<ul id="controlToggle">
+    <li>
+        <input type="radio" name="type" value="none" id="noneToggle"
+               onclick="toggleControl(this);" checked="checked"/>
+        <label for="noneToggle">平移</label>
+        <input type="radio" name="type" value="line" id="lineToggle" onclick="toggleControl(this);"/>
+        <label for="lineToggle">测距</label>
+        <input type="radio" name="type" value="polygon" id="polygonToggle" onclick="toggleControl(this);"/>
+        <label for="polygonToggle">测面积</label>
+    </li>
+    <li>
+        <input type="checkbox" name="geodesic" id="geodesicToggle" onclick="toggleGeodesic(this);"/>
+        <label for="geodesicToggle">使用地理测量</label>
+        <input type="checkbox" name="immediate" id="immediateToggle" onclick="toggleImmediate(this);"/>
+        <label for="immediateToggle">使用动态测量</label>
+        <div id="output">
+        </div>
+    </li>
+</ul>
+</body>
+</html>
